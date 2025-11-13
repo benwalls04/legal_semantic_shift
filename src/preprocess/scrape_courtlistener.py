@@ -18,7 +18,7 @@ def fetch_opinions(decade, model_size, court="scotus"):
     }
 
     n_examples = model_sizes[model_size]
-    outfile = f"../../data/raw/opinions-{decade}-{model_size}.jsonl"
+    outfile = f"../../data/inputs/opinions-{decade}-{model_size}.jsonl"
 
     os.makedirs(os.path.dirname(outfile), exist_ok=True)
 
