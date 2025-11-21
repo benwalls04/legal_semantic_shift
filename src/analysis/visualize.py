@@ -1,11 +1,17 @@
 # visualize the shift in word embeddings
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from gensim.models import Word2Vec
 from sklearn.decomposition import PCA
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+from sklearn.metrics.pairwise import euclidean_distances
 import argparse
+
+# Add utils directory to path to import helpers
+utils_dir = os.path.join(os.path.dirname(__file__), '..', 'utils')
+sys.path.insert(0, os.path.abspath(utils_dir))
+from helpers import align_embeddings, cosine_similarity_single, cosine_similarity_list
 
 SEMANTIC_SHIFT_WORDS = [
     "privacy",      # Privacy laws evolved significantly (digital age)
@@ -27,11 +33,25 @@ CONTROL_WORDS = [
 
 def load_models(model_before_path: str, model_after_path: str):
     """Load both Word2Vec models."""
+    # Convert to absolute paths for clarity
+    model_before_path = os.path.abspath(model_before_path)
+    model_after_path = os.path.abspath(model_after_path)
+    
     print(f"Loading model (before): {model_before_path}")
+    print(f"  File exists: {os.path.exists(model_before_path)}")
     model_before = Word2Vec.load(model_before_path)
     
     print(f"Loading model (after): {model_after_path}")
+    print(f"  File exists: {os.path.exists(model_after_path)}")
     model_after = Word2Vec.load(model_after_path)
+    
+    # Verify they're different models
+    if model_before_path == model_after_path:
+        raise ValueError(f"ERROR: Both models point to the same file: {model_before_path}")
+    
+    print(f"\nModel comparison:")
+    print(f"  Before vocab size: {len(model_before.wv)}")
+    print(f"  After vocab size: {len(model_after.wv)}")
     
     return model_before, model_after
 
@@ -44,23 +64,68 @@ def get_word_embedding(model, word: str):
         return None
 
 
-def calculate_semantic_shift(model_before, model_after, words: list):
+def extract_all_embeddings(model):
     """
-    Calculate semantic shift metrics for a list of words.
-    Returns dictionary with cosine similarity, euclidean distance, and embeddings.
+    Extract all word embeddings from a Word2Vec model as a numpy matrix.
+    
+    Args:
+        model: Word2Vec model
+    
+    Returns:
+        embeddings: numpy array of shape (vocab_size, embedding_dim)
+        word_to_idx: dictionary mapping word to row index in embeddings matrix
+    """
+    vocab = list(model.wv.index_to_key)
+    word_to_idx = {word: idx for idx, word in enumerate(vocab)}
+    embeddings = np.array([model.wv[word] for word in vocab])
+    return embeddings, word_to_idx
+
+
+def calculate_semantic_shift(early_embs_aligned: np.ndarray, later_embs: np.ndarray,
+                            word_to_idx_before: dict, word_to_idx_after: dict, words: list,
+                            model_before=None, model_after=None):
+    """
+    Calculate semantic shift metrics for a list of words using aligned embeddings.
+    
+    Args:
+        early_embs_aligned: aligned embeddings from earlier decade (vocab_size, embedding_dim)
+        later_embs: embeddings from later decade (vocab_size, embedding_dim)
+        word_to_idx_before: mapping from word to index in early_embs_aligned
+        word_to_idx_after: mapping from word to index in later_embs
+        words: list of words to analyze
+        model_before: Optional Word2Vec model from earlier decade (for frequency info)
+        model_after: Optional Word2Vec model from later decade (for frequency info)
+    
+    Returns:
+        Dictionary with cosine similarity, euclidean distance, and embeddings for each word.
     """
     results = {}
     
     for word in words:
-        emb_before = get_word_embedding(model_before, word)
-        emb_after = get_word_embedding(model_after, word)
-        
-        if emb_before is None or emb_after is None:
+        if word not in word_to_idx_before or word not in word_to_idx_after:
             print(f"Warning: '{word}' not found in one or both models. Skipping.")
             continue
         
-        # Calculate cosine similarity (higher = more similar, range: -1 to 1)
-        cosine_sim = cosine_similarity([emb_before], [emb_after])[0][0]
+        # Get word frequencies if models are provided
+        if model_before is not None and model_after is not None:
+            try:
+                freq_before = model_before.wv.get_vecattr(word, 'count')
+            except (KeyError, AttributeError):
+                freq_before = 0
+            try:
+                freq_after = model_after.wv.get_vecattr(word, 'count')
+            except (KeyError, AttributeError):
+                freq_after = 0
+            print(f"{word}: {freq_before} (before) vs {freq_after} (after)")
+        
+        idx_before = word_to_idx_before[word]
+        idx_after = word_to_idx_after[word]
+        
+        emb_before = early_embs_aligned[idx_before]
+        emb_after = later_embs[idx_after]
+        
+        # Calculate cosine similarity using helper function (higher = more similar, range: -1 to 1)
+        cosine_sim = cosine_similarity_single(emb_before, emb_after)
         
         # Calculate euclidean distance (lower = more similar)
         euclidean_dist = euclidean_distances([emb_before], [emb_after])[0][0]
@@ -78,121 +143,86 @@ def calculate_semantic_shift(model_before, model_after, words: list):
     
     return results
 
-
-def plot_semantic_shift_comparison(results: dict, decade_before: int = None, decade_after: int = None, output_path: str = None):
+def plot_normalized_cosine_similarities(results: dict, decade_before: int = None, 
+                                       decade_after: int = None, output_path: str = None):
     """
-    Create visualizations comparing semantic shift between words.
+    Create two separate plots: one for control words and one for shift words,
+    showing normalized cosine similarities with average lines.
     """
     if not results:
         print("No results to visualize.")
         return
     
-    words = list(results.keys())
-    cosine_sims = [results[w]['cosine_similarity'] for w in words]
-    shift_magnitudes = [results[w]['shift_magnitude'] for w in words]
+    # Separate words into control and shift groups
+    control_words = [w for w in CONTROL_WORDS if w in results]
+    shift_words = [w for w in SEMANTIC_SHIFT_WORDS if w in results]
     
-    # Create title with decade information if provided
+    # Normalize cosine similarity from [-1, 1] to [0, 1]
+    def normalize_cosine_sim(cos_sim):
+        return (cos_sim + 1) / 2
+    
+    # Extract normalized cosine similarities
+    control_sims = [normalize_cosine_sim(results[w]['cosine_similarity']) for w in control_words]
+    shift_sims = [normalize_cosine_sim(results[w]['cosine_similarity']) for w in shift_words]
+    
+    # Calculate averages
+    control_avg = np.mean(control_sims) if control_sims else 0
+    shift_avg = np.mean(shift_sims) if shift_sims else 0
+    
+    # Create figure with two subplots
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Create title with decade information
     if decade_before and decade_after:
-        title = f'Semantic Shift Analysis: {decade_before} vs {decade_after}'
+        fig.suptitle(f'Normalized Cosine Similarities: {decade_before} vs {decade_after}', 
+                    fontsize=16, fontweight='bold')
     else:
-        title = 'Semantic Shift Analysis'
+        fig.suptitle('Normalized Cosine Similarities', fontsize=16, fontweight='bold')
     
-    # Create figure with subplots
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(title, fontsize=16, fontweight='bold')
-    
-    # Plot 1: Cosine Similarity (bar chart)
-    ax1 = axes[0, 0]
-    colors = plt.cm.RdYlGn(1 - np.array(shift_magnitudes) / 2)  # Red for high shift, green for low
-    bars1 = ax1.barh(words, cosine_sims, color=colors)
-    ax1.set_xlabel('Cosine Similarity', fontsize=11)
-    ax1.set_title('Cosine Similarity (Higher = More Similar)', fontsize=12)
+    # Plot 1: Control Words
+    ax1 = axes[0]
+    colors1 = plt.cm.Greens(np.linspace(0.4, 0.9, len(control_words)))
+    bars1 = ax1.barh(control_words, control_sims, color=colors1)
+    ax1.axvline(x=control_avg, color='red', linestyle='--', linewidth=2, 
+                label=f'Average: {control_avg:.3f}')
+    ax1.set_xlabel('Normalized Cosine Similarity (0-1)', fontsize=12)
+    ax1.set_title('Control Words (Expected: High Similarity)', fontsize=13, fontweight='bold')
     ax1.set_xlim([0, 1])
-    ax1.axvline(x=0.5, color='red', linestyle='--', alpha=0.5, label='Low Similarity Threshold')
-    ax1.legend()
+    ax1.legend(loc='lower right')
     ax1.grid(axis='x', alpha=0.3)
     
     # Add value labels on bars
-    for i, (bar, val) in enumerate(zip(bars1, cosine_sims)):
-        ax1.text(val + 0.02, i, f'{val:.3f}', va='center', fontsize=9)
+    for i, (bar, val) in enumerate(zip(bars1, control_sims)):
+        ax1.text(val + 0.02, i, f'{val:.3f}', va='center', fontsize=10)
     
-    # Plot 2: Shift Magnitude (bar chart)
-    ax2 = axes[0, 1]
-    bars2 = ax2.barh(words, shift_magnitudes, color=colors)
-    ax2.set_xlabel('Shift Magnitude', fontsize=11)
-    ax2.set_title('Semantic Shift Magnitude (Higher = More Shift)', fontsize=12)
-    ax2.set_xlim([0, 2])
+    # Plot 2: Shift Words
+    ax2 = axes[1]
+    colors2 = plt.cm.Reds(np.linspace(0.4, 0.9, len(shift_words)))
+    bars2 = ax2.barh(shift_words, shift_sims, color=colors2)
+    ax2.axvline(x=shift_avg, color='blue', linestyle='--', linewidth=2, 
+                label=f'Average: {shift_avg:.3f}')
+    ax2.set_xlabel('Normalized Cosine Similarity (0-1)', fontsize=12)
+    ax2.set_title('Semantic Shift Words (Expected: Lower Similarity)', fontsize=13, fontweight='bold')
+    ax2.set_xlim([0, 1])
+    ax2.legend(loc='lower right')
     ax2.grid(axis='x', alpha=0.3)
     
     # Add value labels on bars
-    for i, (bar, val) in enumerate(zip(bars2, shift_magnitudes)):
-        ax2.text(val + 0.05, i, f'{val:.3f}', va='center', fontsize=9)
-    
-    # Plot 3: Scatter plot - Cosine Similarity vs Shift Magnitude
-    ax3 = axes[1, 0]
-    scatter = ax3.scatter(cosine_sims, shift_magnitudes, s=100, alpha=0.6, c=range(len(words)), cmap='viridis')
-    for i, word in enumerate(words):
-        ax3.annotate(word, (cosine_sims[i], shift_magnitudes[i]), 
-                    xytext=(5, 5), textcoords='offset points', fontsize=9)
-    ax3.set_xlabel('Cosine Similarity', fontsize=11)
-    ax3.set_ylabel('Shift Magnitude', fontsize=11)
-    ax3.set_title('Similarity vs Shift', fontsize=12)
-    ax3.grid(alpha=0.3)
-    
-    # Plot 4: 2D Projection using PCA
-    ax4 = axes[1, 1]
-    
-    # Combine all embeddings for PCA
-    all_embeddings = []
-    labels = []
-    before_label = f"Before ({decade_before})" if decade_before else "Before"
-    after_label = f"After ({decade_after})" if decade_after else "After"
-    
-    for word in words:
-        all_embeddings.append(results[word]['embedding_before'])
-        labels.append(f"{word}_before")
-        all_embeddings.append(results[word]['embedding_after'])
-        labels.append(f"{word}_after")
-    
-    all_embeddings = np.array(all_embeddings)
-    
-    # Apply PCA
-    pca = PCA(n_components=2)
-    embeddings_2d = pca.fit_transform(all_embeddings)
-    
-    # Plot with arrows showing shift
-    colors_list = plt.cm.tab10(np.linspace(0, 1, len(words)))
-    for i, word in enumerate(words):
-        idx_before = i * 2
-        idx_after = i * 2 + 1
-        
-        # Plot points
-        ax4.scatter(embeddings_2d[idx_before, 0], embeddings_2d[idx_before, 1], 
-                   color=colors_list[i], marker='o', s=100, alpha=0.7, label=f'{word} ({before_label})' if i == 0 else '')
-        ax4.scatter(embeddings_2d[idx_after, 0], embeddings_2d[idx_after, 1], 
-                   color=colors_list[i], marker='s', s=100, alpha=0.7, label=f'{word} ({after_label})' if i == 0 else '')
-        
-        # Draw arrow from before to after
-        ax4.annotate('', xy=embeddings_2d[idx_after], xytext=embeddings_2d[idx_before],
-                    arrowprops=dict(arrowstyle='->', color=colors_list[i], lw=2, alpha=0.6))
-        
-        # Add word labels
-        ax4.text(embeddings_2d[idx_before, 0], embeddings_2d[idx_before, 1] - 0.1, 
-                word, fontsize=8, ha='center', color=colors_list[i])
-    
-    ax4.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.1%} variance)', fontsize=11)
-    ax4.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.1%} variance)', fontsize=11)
-    ax4.set_title('2D PCA Projection of Embeddings', fontsize=12)
-    ax4.legend(loc='best', fontsize=8)
-    ax4.grid(alpha=0.3)
+    for i, (bar, val) in enumerate(zip(bars2, shift_sims)):
+        ax2.text(val + 0.02, i, f'{val:.3f}', va='center', fontsize=10)
     
     plt.tight_layout()
     
     if output_path:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        print(f"\n✅ Visualization saved to {output_path}")
+        print(f"\n✅ Normalized cosine similarity plots saved to {output_path}")
     else:
         plt.show()
+    
+    # Print summary
+    print(f"\nControl words average normalized cosine similarity: {control_avg:.4f}")
+    print(f"Shift words average normalized cosine similarity: {shift_avg:.4f}")
+    print(f"Difference: {control_avg - shift_avg:.4f}")
 
 
 def print_shift_summary(results: dict):
@@ -223,9 +253,50 @@ def visualize_semantic_shift(model_before_path: str, model_after_path: str,
     # Load models
     model_before, model_after = load_models(model_before_path, model_after_path)
     
-    # Calculate semantic shift
+    # Extract all embeddings from both models
+    print("\nExtracting embedding spaces from both models...")
+    early_embs, word_to_idx_before = extract_all_embeddings(model_before)
+    later_embs, word_to_idx_after = extract_all_embeddings(model_after)
+    
+    print(f"Early model vocabulary size: {len(word_to_idx_before)}")
+    print(f"Later model vocabulary size: {len(word_to_idx_after)}")
+    
+    # Check if embedding dimensions match
+    if early_embs.shape[1] != later_embs.shape[1]:
+        raise ValueError(f"Embedding dimensions must match. Got {early_embs.shape[1]} and {later_embs.shape[1]}")
+    
+    # Find common vocabulary for alignment
+    common_words = set(word_to_idx_before.keys()) & set(word_to_idx_after.keys())
+    print(f"Common vocabulary size: {len(common_words)}")
+
+    # Instead of all common words, use only high-frequency stable words
+    # Filter to top N most frequent words that appear in both decades    
+
+    if len(common_words) < 10:
+        raise ValueError(f"Too few common words ({len(common_words)}) for reliable alignment. Need at least 10.")
+    
+    # Extract embeddings for common words only (for alignment)
+    common_words_list = sorted(list(common_words))
+    early_embs_common = np.array([early_embs[word_to_idx_before[word]] for word in common_words_list])
+    later_embs_common = np.array([later_embs[word_to_idx_after[word]] for word in common_words_list])
+    
+    # Align embedding spaces using Procrustes
+    print("\nAligning embedding spaces using Procrustes transformation...")
+    R, early_embs_common_aligned, _ = align_embeddings(early_embs_common, later_embs_common)
+    print(f"Alignment rotation matrix shape: {R.shape}")
+    
+    # Apply alignment to entire early embedding space
+    early_embs_aligned = early_embs @ R
+    print("Applied alignment transformation to full embedding space.")
+    
+    # Calculate semantic shift using aligned embeddings
     print(f"\nCalculating semantic shift for {len(words)} words...")
-    results = calculate_semantic_shift(model_before, model_after, words)
+    print("Word frequencies:")
+    results = calculate_semantic_shift(
+        early_embs_aligned, later_embs,
+        word_to_idx_before, word_to_idx_after, words,
+        model_before=model_before, model_after=model_after
+    )
     
     if not results:
         print("No valid words found in both models.")
@@ -236,7 +307,16 @@ def visualize_semantic_shift(model_before_path: str, model_after_path: str,
     
     # Create visualizations
     print("\nGenerating visualizations...")
-    plot_semantic_shift_comparison(results, decade_before, decade_after, output_path)
+    
+    # Create normalized cosine similarity plots (control vs shift words)
+    if output_path:
+        # Modify output path for the new plot
+        base_path = output_path.rsplit('.', 1)[0] if '.' in output_path else output_path
+        normalized_plot_path = f"{base_path}_normalized_cosine.png"
+    else:
+        normalized_plot_path = None
+    
+    plot_normalized_cosine_similarities(results, decade_before, decade_after, normalized_plot_path)
     
     return results
 
@@ -255,8 +335,8 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    model_before_path = f"models/word2vec-{args.decade_before}-{args.size}.model"
-    model_after_path = f"models/word2vec-{args.decade_after}-{args.size}.model"
+    model_before_path = f"../models/word2vec-{args.decade_before}-{args.size}.model"
+    model_after_path = f"../models/word2vec-{args.decade_after}-{args.size}.model"
 
     if not os.path.exists(model_before_path):
         print(f"Error: model (before) path does not exist -> {model_before_path}")

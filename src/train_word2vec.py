@@ -54,15 +54,18 @@ def train_word2vec(jsonl_path: str, output_path: str,
     epoch_logger = EpochLogger()
     
     print("\nTraining Word2Vec model...")
-    print(f"Parameters: vector_size={vector_size}, window={window}, "
-          f"min_count={min_count}, workers={workers}, epochs={epochs}")
+    print(f"Parameters: sg=1 (skip-gram), vector_size={vector_size}, window={window}, "
+          f"min_count={min_count}, negative=5, ns_exponent=0.75, workers={workers}, epochs={epochs}")
     
-    # Train the model
+    # Train the model with skip-gram and negative sampling
     model = Word2Vec(
         sentences=sentences,
+        sg=1, 
         vector_size=vector_size,
         window=window,
         min_count=min_count,
+        negative=5, 
+        ns_exponent=0.75, 
         workers=workers,
         epochs=epochs,
         callbacks=[epoch_logger]
@@ -87,7 +90,7 @@ if __name__ == "__main__":
                        help="Dataset size: small (200), medium (1k), large (50k). Default: small")
     parser.add_argument("--vector-size", type=int, default=100,
                        help="Dimensionality of word vectors (default: 100)")
-    parser.add_argument("--window", type=int, default=5,
+    parser.add_argument("--window", type=int, default=4,
                        help="Maximum distance between current and predicted word (default: 5)")
     parser.add_argument("--min-count", type=int, default=2,
                        help="Minimum word count to be included (default: 2)")
