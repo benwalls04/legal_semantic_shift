@@ -322,7 +322,6 @@ def fetch_opinions(decade, model_size, court="scotus", mapping_file="../../data/
     
     print(f"✅ Finished. Saved {len(sampled_opinions)} opinions to {outfile}.")
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch court opinions or print cluster dates")
     parser.add_argument("--decade", type=int, default=None,
