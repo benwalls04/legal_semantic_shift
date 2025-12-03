@@ -29,11 +29,12 @@ if __name__ == "__main__":
                        help="Path to save visualization (optional, only for predefined mode)")
     parser.add_argument("--top-n", type=int, default=5,
                        help="Number of top words to show (only for analyze mode, default: 5)")
+    parser.add_argument("--model-type", type=str, default="word2vec", choices=["word2vec", "svd"])
     
     args = parser.parse_args()
 
-    model_before_path = f"../models/word2vec-{args.decade_before}-{args.size}.model"
-    model_after_path = f"../models/word2vec-{args.decade_after}-{args.size}.model"
+    model_before_path = f"../models/{args.model_type}-{args.decade_before}-{args.size}.model"
+    model_after_path = f"../models/{args.model_type}-{args.decade_after}-{args.size}.model"
 
     if not os.path.exists(model_before_path):
         print(f"Error: model (before) path does not exist -> {model_before_path}")

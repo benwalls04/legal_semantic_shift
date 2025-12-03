@@ -3,6 +3,7 @@ import numpy as np
 import os
 from gensim.models import Word2Vec
 from sklearn.metrics.pairwise import euclidean_distances
+import sys
 
 
 def align_embeddings(early_embs: np.ndarray, later_embs: np.ndarray):
@@ -90,22 +91,47 @@ def cosine_similarity_list(early_embs_aligned: np.ndarray, later_embs: np.ndarra
     
     return similarities
 
-
 def load_models(model_before_path: str, model_after_path: str):
-    """Load both Word2Vec models."""
-    # Convert to absolute paths for clarity
+    """Load both Word2Vec or SVD models."""
+    import pickle
+    from gensim.models import Word2Vec
+    
     model_before_path = os.path.abspath(model_before_path)
     model_after_path = os.path.abspath(model_after_path)
     
     print(f"Loading model (before): {model_before_path}")
     print(f"  File exists: {os.path.exists(model_before_path)}")
-    model_before = Word2Vec.load(model_before_path)
+    
+    # Try to detect model type
+    try:
+        model_before = Word2Vec.load(model_before_path)
+        print("  Model type: Word2Vec")
+    except:
+        # Try SVD model
+        try:
+            # Import from the correct path
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+            from train_svd import SVDModel
+            model_before = SVDModel.load(model_before_path)
+            print("  Model type: SVD")
+        except Exception as e:
+            raise ValueError(f"Could not load model from {model_before_path}: {e}")
     
     print(f"Loading model (after): {model_after_path}")
     print(f"  File exists: {os.path.exists(model_after_path)}")
-    model_after = Word2Vec.load(model_after_path)
     
-    # Verify they're different models
+    try:
+        model_after = Word2Vec.load(model_after_path)
+        print("  Model type: Word2Vec")
+    except:
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+            from train_svd import SVDModel
+            model_after = SVDModel.load(model_after_path)
+            print("  Model type: SVD")
+        except Exception as e:
+            raise ValueError(f"Could not load model from {model_after_path}: {e}")
+    
     if model_before_path == model_after_path:
         raise ValueError(f"ERROR: Both models point to the same file: {model_before_path}")
     
@@ -114,7 +140,6 @@ def load_models(model_before_path: str, model_after_path: str):
     print(f"  After vocab size: {len(model_after.wv)}")
     
     return model_before, model_after
-
 
 def get_word_embedding(model, word: str):
     """Get embedding for a word, return None if word not in vocabulary."""

@@ -16,20 +16,18 @@ from helpers import (
 
 # Predefined words for semantic shift analysis
 SEMANTIC_SHIFT_WORDS = [
-    "privacy",      # Privacy laws evolved significantly (digital age)
-    "discrimination",  # Legal definitions expanded (protected classes, etc.)
-    "technology",   # Legal implications of tech changed dramatically
-    "surveillance", # Shifted from physical to digital surveillance
-    "data"          # Data protection/privacy became major legal concern
+    "rights",     
+    "discrimination",  
+    "power",   
+    "property"        
 ]
 
 # Control words (should have MINIMAL shift)
 CONTROL_WORDS = [
-    "court",        # Core legal institution, meaning stable
-    "judge",        # Role definition unchanged
-    "law",          # Fundamental concept, stable meaning
-    "evidence",     # Legal concept with stable definition
-    "trial"         # Legal procedure, meaning unchanged
+    "court",       
+    "law",         
+    "evidence",     
+    "trial"      
 ]
 
 

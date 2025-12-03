@@ -87,6 +87,8 @@ def analyze_legal_terms_shift(model_before_path: str, model_after_path: str,
     print(f"{'='*60}\n")
     
     # Load models
+    print(model_before_path)
+    print(model_after_path)
     model_before, model_after = load_models(model_before_path, model_after_path)
     
     # Extract embeddings and align

@@ -92,11 +92,11 @@ if __name__ == "__main__":
                        help="Dimensionality of word vectors (default: 100)")
     parser.add_argument("--window", type=int, default=4,
                        help="Maximum distance between current and predicted word (default: 5)")
-    parser.add_argument("--min-count", type=int, default=2,
+    parser.add_argument("--min-count", type=int, default=5,
                        help="Minimum word count to be included (default: 2)")
     parser.add_argument("--workers", type=int, default=4,
                        help="Number of worker threads (default: 4)")
-    parser.add_argument("--epochs", type=int, default=10,
+    parser.add_argument("--epochs", type=int, default=15,
                        help="Number of training epochs (default: 10)")
     
     args = parser.parse_args()
