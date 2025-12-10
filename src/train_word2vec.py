@@ -11,7 +11,6 @@ from preprocess.tokenize import tokenize_documents
 
 
 class EpochLogger(CallbackAny2Vec):
-    """Callback to log information about training"""
     def __init__(self):
         self.epoch = 0
 
@@ -26,31 +25,17 @@ def train_word2vec(jsonl_path: str, output_path: str,
                    min_count: int = 2,
                    workers: int = 4,
                    epochs: int = 10):
-    """
-    Train a Word2Vec model on tokenized legal documents.
-    
-    Args:
-        jsonl_path: Path to JSONL file with legal opinions
-        output_path: Path to save the trained model
-        vector_size: Dimensionality of word vectors
-        window: Maximum distance between current and predicted word
-        min_count: Minimum word count to be included in vocabulary
-        workers: Number of worker threads
-        epochs: Number of training epochs
-    """
+    """ Train a Word2Vec model on tokenized legal documents. """
 
-    print(f"Loading and tokenizing documents from {jsonl_path}...")
     sentences = tokenize_documents(jsonl_path)
     
     if not sentences:
         print("Error: No documents were tokenized. Check your input file.")
         return
     
-    print(f"Tokenized {len(sentences)} documents")
     total_tokens = sum(len(s) for s in sentences)
     print(f"Total tokens: {total_tokens:,}")
     
-    # Initialize callback
     epoch_logger = EpochLogger()
     
     print("\nTraining Word2Vec model...")

@@ -57,10 +57,7 @@ def plot_normalized_cosine_similarities(results: dict, decade_before: int = None
     control_avg = np.mean(control_sims) if control_sims else 0
     shift_avg = np.mean(shift_sims) if shift_sims else 0
     
-    # Create figure with two subplots
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-    
-    # Create title with decade information
     if decade_before and decade_after:
         fig.suptitle(f'Normalized Cosine Similarities: {decade_before} vs {decade_after}', 
                     fontsize=16, fontweight='bold')
@@ -79,7 +76,6 @@ def plot_normalized_cosine_similarities(results: dict, decade_before: int = None
     ax1.legend(loc='lower right')
     ax1.grid(axis='x', alpha=0.3)
     
-    # Add value labels on bars
     for i, (bar, val) in enumerate(zip(bars1, control_sims)):
         ax1.text(val + 0.02, i, f'{val:.3f}', va='center', fontsize=10)
     
@@ -95,7 +91,6 @@ def plot_normalized_cosine_similarities(results: dict, decade_before: int = None
     ax2.legend(loc='lower right')
     ax2.grid(axis='x', alpha=0.3)
     
-    # Add value labels on bars
     for i, (bar, val) in enumerate(zip(bars2, shift_sims)):
         ax2.text(val + 0.02, i, f'{val:.3f}', va='center', fontsize=10)
     
@@ -103,7 +98,7 @@ def plot_normalized_cosine_similarities(results: dict, decade_before: int = None
     
     if output_path:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        print(f"\n✅ Normalized cosine similarity plots saved to {output_path}")
+        print(f"\nNormalized cosine similarity plots saved to {output_path}")
     else:
         plt.show()
     
@@ -122,18 +117,12 @@ def visualize_predefined_words(model_before_path: str, model_after_path: str,
     """
     words = SEMANTIC_SHIFT_WORDS + CONTROL_WORDS 
 
-    # Load models
     model_before, model_after = load_models(model_before_path, model_after_path)
     
     # Extract all embeddings from both models
-    print("\nExtracting embedding spaces from both models...")
     early_embs, word_to_idx_before = extract_all_embeddings(model_before)
     later_embs, word_to_idx_after = extract_all_embeddings(model_after)
     
-    print(f"Early model vocabulary size: {len(word_to_idx_before)}")
-    print(f"Later model vocabulary size: {len(word_to_idx_after)}")
-    
-    # Check if embedding dimensions match
     if early_embs.shape[1] != later_embs.shape[1]:
         raise ValueError(f"Embedding dimensions must match. Got {early_embs.shape[1]} and {later_embs.shape[1]}")
     
@@ -150,17 +139,10 @@ def visualize_predefined_words(model_before_path: str, model_after_path: str,
     later_embs_common = np.array([later_embs[word_to_idx_after[word]] for word in common_words_list])
     
     # Align embedding spaces using Procrustes
-    print("\nAligning embedding spaces using Procrustes transformation...")
     R, early_embs_common_aligned, _ = align_embeddings(early_embs_common, later_embs_common)
-    print(f"Alignment rotation matrix shape: {R.shape}")
-    
-    # Apply alignment to entire early embedding space
     early_embs_aligned = early_embs @ R
-    print("Applied alignment transformation to full embedding space.")
     
     # Calculate semantic shift using aligned embeddings
-    print(f"\nCalculating semantic shift for {len(words)} words...")
-    print("Word frequencies:")
     results = calculate_semantic_shift(
         early_embs_aligned, later_embs,
         word_to_idx_before, word_to_idx_after, words,
@@ -171,13 +153,10 @@ def visualize_predefined_words(model_before_path: str, model_after_path: str,
         print("No valid words found in both models.")
         return
     
-    # Print summary
     print_shift_summary(results)
     
-    # Create visualizations
     print("\nGenerating visualizations...")
     
-    # Create normalized cosine similarity plots (control vs shift words)
     if output_path:
         base_path = output_path.rsplit('.', 1)[0] if '.' in output_path else output_path
         normalized_plot_path = f"{base_path}_normalized_cosine.png"

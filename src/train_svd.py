@@ -14,16 +14,7 @@ from preprocess.tokenize import tokenize_documents
 
 
 def compute_ppmi(cooccurrence_matrix, alpha=0.0):
-    """
-    Compute Positive Pointwise Mutual Information (PPMI) from co-occurrence matrix.
-    
-    Args:
-        cooccurrence_matrix: Sparse or dense co-occurrence matrix
-        alpha: Smoothing parameter (default: 0.0 as recommended for SVD)
-    
-    Returns:
-        PPMI matrix (same format as input)
-    """
+    """Compute Positive Pointwise Mutual Information (PPMI) from co-occurrence matrix."""
     # Convert to dense if sparse for easier computation
     if isinstance(cooccurrence_matrix, csr_matrix):
         cooccurrence = cooccurrence_matrix.toarray()
@@ -47,12 +38,7 @@ def compute_ppmi(cooccurrence_matrix, alpha=0.0):
     col_sums = np.where(col_sums == 0, 1, col_sums)
     
     # Compute PMI: log(P(w,c) / (P(w) * P(c)))
-    # P(w,c) = cooccurrence / total
-    # P(w) = row_sums / total
-    # P(c) = col_sums / total
     pmi = np.log((cooccurrence / total) / ((row_sums / total) * (col_sums / total)) + 1e-10)
-    
-    # PPMI: set negative values to 0
     ppmi = np.maximum(pmi, 0.0)
     
     # Convert back to sparse if input was sparse
@@ -62,16 +48,7 @@ def compute_ppmi(cooccurrence_matrix, alpha=0.0):
 
 
 def apply_context_distribution_smoothing(cooccurrence_matrix, smoothing=0.75):
-    """
-    Apply context distribution smoothing to co-occurrence matrix.
-    
-    Args:
-        cooccurrence_matrix: Co-occurrence matrix
-        smoothing: Smoothing parameter (default: 0.75)
-    
-    Returns:
-        Smoothed co-occurrence matrix
-    """
+    """Apply context distribution smoothing to co-occurrence matrix."""
     if isinstance(cooccurrence_matrix, csr_matrix):
         cooccurrence = cooccurrence_matrix.toarray()
     else:
@@ -178,22 +155,6 @@ def train_svd(jsonl_path: str, output_path: str,
               ppmi_alpha: float = 0.0,
               context_smoothing: float = 0.75,
               eigenvalue_weight: float = 0.5):
-    """
-    Train SVD embeddings on tokenized legal documents.
-    
-    Args:
-        jsonl_path: Path to JSONL file with legal opinions
-        output_path: Path to save the trained model
-        n_components: Dimensionality of word vectors (number of SVD components), recommended: 100-150
-        min_count: Minimum word count to be included in vocabulary, recommended: 5-10
-        max_features: Maximum vocabulary size (None = no limit)
-        use_tfidf: If True, use TF-IDF weighting; if False, use raw counts
-        matrix_type: 'term_doc' (term-document matrix) or 'term_term' (co-occurrence)
-        context_window: Context window size (symmetric), recommended: 4
-        ppmi_alpha: PPMI smoothing parameter (α), recommended: 0.0
-        context_smoothing: Context distribution smoothing, recommended: 0.75
-        eigenvalue_weight: Eigenvalue weighting (γ), recommended: 0.5-0.75
-    """
     
     print(f"Loading and tokenizing documents from {jsonl_path}...")
     tokenized_docs = tokenize_documents(jsonl_path)
@@ -206,20 +167,17 @@ def train_svd(jsonl_path: str, output_path: str,
     total_tokens = sum(len(doc) for doc in tokenized_docs)
     print(f"Total tokens: {total_tokens:,}")
     
-    # Convert tokenized documents to space-separated strings for vectorizer
-    print("\nConverting documents to strings...")
     doc_strings = [' '.join(doc) for doc in tokenized_docs]
     
     if matrix_type == 'term_doc':
         # Build term-document matrix
-        print(f"\nBuilding {'TF-IDF' if use_tfidf else 'count'} term-document matrix...")
         
         if use_tfidf:
             vectorizer = TfidfVectorizer(
                 min_df=min_count,
                 max_features=max_features,
                 lowercase=False,  # Already lowercase from tokenization
-                token_pattern=r'\S+',  # Match any non-whitespace (already tokenized)
+                token_pattern=r'\S+',  
                 analyzer='word'
             )
         else:
@@ -237,10 +195,7 @@ def train_svd(jsonl_path: str, output_path: str,
         
     elif matrix_type == 'term_term':
         # Build term-term co-occurrence matrix
-        print(f"\nBuilding term-term co-occurrence matrix...")
-        print("(This may take longer for large corpora)")
         
-        # First, build vocabulary
         from collections import Counter
         word_counts = Counter()
         for doc in tokenized_docs:
@@ -255,8 +210,6 @@ def train_svd(jsonl_path: str, output_path: str,
         word_to_idx = {word: idx for idx, word in enumerate(vocab)}
         vocab_size = len(vocab)
         
-        # Build co-occurrence matrix (window-based, symmetric)
-        print(f"Building co-occurrence matrix with symmetric window size {context_window}...")
         cooccurrence = np.zeros((vocab_size, vocab_size), dtype=np.float32)
         
         for doc in tokenized_docs:
@@ -280,17 +233,14 @@ def train_svd(jsonl_path: str, output_path: str,
                         weight = 1.0 / distance
                         cooccurrence[word_idx, context_idx] += weight
         
-        # Convert to sparse matrix
         matrix = csr_matrix(cooccurrence)
         
         # Apply context distribution smoothing
         if context_smoothing > 0:
-            print(f"Applying context distribution smoothing (smoothing={context_smoothing})...")
             matrix = apply_context_distribution_smoothing(matrix, smoothing=context_smoothing)
         
         # Apply PPMI transformation
         if ppmi_alpha >= 0:
-            print(f"Computing PPMI with smoothing α={ppmi_alpha}...")
             matrix = compute_ppmi(matrix, alpha=ppmi_alpha)
         
         # Create a dummy vectorizer for compatibility
@@ -299,18 +249,11 @@ def train_svd(jsonl_path: str, output_path: str,
     else:
         raise ValueError(f"Unknown matrix_type: {matrix_type}. Use 'term_doc' or 'term_term'")
     
-    print(f"Matrix shape: {matrix.shape}")
-    print(f"Vocabulary size: {len(vocab)}")
-    
-    # Apply SVD
     print(f"\nApplying TruncatedSVD with {n_components} components...")
     svd = TruncatedSVD(n_components=n_components, random_state=42)
     
     if matrix_type == 'term_doc':
         # For term-document: transpose to get word embeddings
-        # SVD on term-doc matrix: U @ S @ V^T
-        # U gives document embeddings, V^T gives term embeddings
-        # We want term embeddings, so we transpose first
         word_embeddings = svd.fit_transform(matrix.T)
     else:
         # For term-term: embeddings are directly from SVD
@@ -318,18 +261,11 @@ def train_svd(jsonl_path: str, output_path: str,
     
     # Apply eigenvalue weighting (γ)
     if eigenvalue_weight != 1.0:
-        print(f"Applying eigenvalue weighting (γ={eigenvalue_weight})...")
-        # Get singular values and weight them
         singular_values = svd.singular_values_
-        # Weight the singular values: S^γ
         weighted_singular_values = np.power(singular_values, eigenvalue_weight)
-        # Apply weighting to embeddings: U * S^γ (instead of U * S)
-        # Since word_embeddings = U @ S, we need to scale by S^(γ-1)
         scaling = np.power(singular_values, eigenvalue_weight - 1.0)
         word_embeddings = word_embeddings * scaling[np.newaxis, :]
-    
-    print(f"Embedding shape: {word_embeddings.shape}")
-    print(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.4f}")
+
     
     # Create model wrapper
     model = SVDModel(

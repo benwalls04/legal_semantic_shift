@@ -33,8 +33,12 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    model_before_path = f"../models/{args.model_type}-{args.decade_before}-{args.size}.model"
-    model_after_path = f"../models/{args.model_type}-{args.decade_after}-{args.size}.model"
+    # Get the src directory (parent of analysis directory)
+    src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    models_dir = os.path.join(src_dir, "models")
+    
+    model_before_path = os.path.join(models_dir, f"{args.model_type}-{args.decade_before}-{args.size}.model")
+    model_after_path = os.path.join(models_dir, f"{args.model_type}-{args.decade_after}-{args.size}.model")
 
     if not os.path.exists(model_before_path):
         print(f"Error: model (before) path does not exist -> {model_before_path}")

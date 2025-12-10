@@ -75,10 +75,9 @@ def map_clusters_by_decade(court="scotus"):
     session = requests.Session()
     session.headers.update(HEADERS)
     
-    # Dictionary to map decades to cluster IDs
     decade_to_clusters = {}
     
-    # Regex pattern to find 4-digit years (reasonable range: 1800-2100)
+    # Regex pattern to find 4-digit years
     year_pattern = re.compile(r'\b(1[89]\d{2}|20[0-1]\d|2100)\b')
     
     count = 0
@@ -102,12 +101,9 @@ def map_clusters_by_decade(court="scotus"):
                 years = year_pattern.findall(other_dates)
                 
                 if years:
-                    # Use the first year found (naive approach as requested)
                     year = int(years[0])
-                    # Map to decade (e.g., 1904 -> 1900, 2010 -> 2010)
                     decade = (year // 10) * 10
                     
-                    # Initialize decade list if it doesn't exist
                     if decade not in decade_to_clusters:
                         decade_to_clusters[decade] = []
                     
@@ -166,7 +162,6 @@ def fetch_opinions(decade, model_size, court="scotus", mapping_file="../../data/
     os.makedirs(os.path.dirname(outfile), exist_ok=True) 
 
     # Load the cluster mapping
-    print(f"\nLoading cluster mapping from: {mapping_file}")
     try:
         with open(mapping_file, "r", encoding="utf-8") as f:
             decade_to_clusters = json.load(f)
@@ -203,13 +198,13 @@ def fetch_opinions(decade, model_size, court="scotus", mapping_file="../../data/
             print(f"\nReached target of {n_examples} opinions. Stopping early.")
             break
         
-        # Fetch all opinions for this cluster (get all fields, not just limited set)
+        # Fetch all opinions for this cluster 
         url = f"{API_URL}?cluster={cluster_id}"
         
         cluster_opinions_total = 0
         cluster_opinions_with_text = 0
         cluster_opinions_without_text = 0
-        opinions_without_text_list = []  # Store opinions without text for printing
+        opinions_without_text_list = []  
         
         while url:
             # Stop if we've collected enough opinions
@@ -238,18 +233,16 @@ def fetch_opinions(decade, model_size, court="scotus", mapping_file="../../data/
                     html_content = item.get("html", "")
                     extracted_text = extract_text_from_html(html_content)
                     if extracted_text.strip():
-                        # Add the extracted text as plain_text
                         item["plain_text"] = extracted_text
                         text = extracted_text
                         opinions_from_html += 1
                         print(f"  Extracted text from HTML for opinion ID {item.get('id', 'N/A')} ({len(extracted_text)} chars)")
                 
-                if text.strip():  # Only include opinions with non-empty text
+                if text.strip():  
                     all_opinions.append(item)
                     cluster_opinions_with_text += 1
                     opinions_with_text += 1
                     
-                    # Stop if we've reached the limit
                     if len(all_opinions) >= n_examples:
                         break
                 else:
@@ -257,7 +250,6 @@ def fetch_opinions(decade, model_size, court="scotus", mapping_file="../../data/
                     opinions_without_text += 1
                     opinions_without_text_list.append(item)
             
-            # Break out of while loop if we've reached the limit
             if len(all_opinions) >= n_examples:
                 break
             
@@ -271,15 +263,11 @@ def fetch_opinions(decade, model_size, court="scotus", mapping_file="../../data/
         if cluster_opinions_total > 0:
             clusters_with_opinions += 1
             if cluster_opinions_without_text > 0:
-                # Print info for clusters that have opinions but no text
                 print(f"\nCluster {cluster_id}: {cluster_opinions_total} opinions found - "
                       f"{cluster_opinions_with_text} with text, {cluster_opinions_without_text} without text")
-                # Print all fields for opinions without text
                 for i, opinion in enumerate(opinions_without_text_list):
                     print(f"\n  Opinion without plain_text ({i+1}/{len(opinions_without_text_list)}):")
-                    #print_opinion_fields(opinion)
         
-        # Break out of cluster loop if we've reached the limit
         if len(all_opinions) >= n_examples:
             break
         
@@ -314,13 +302,12 @@ def fetch_opinions(decade, model_size, court="scotus", mapping_file="../../data/
         if len(all_opinions) < n_examples:
             print(f"Warning: Only {len(all_opinions)} opinions available, less than requested {n_examples}")
     
-    # Write to output file
     with open(outfile, "w", encoding="utf-8") as f:
         for item in sampled_opinions:
             json.dump(item, f)
             f.write("\n")
     
-    print(f"✅ Finished. Saved {len(sampled_opinions)} opinions to {outfile}.")
+    print(f"Finished. Saved {len(sampled_opinions)} opinions to {outfile}.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch court opinions or print cluster dates")

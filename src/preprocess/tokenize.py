@@ -34,14 +34,12 @@ def tokenize_text(text: str) -> List[str]:
     if not text:
         return []
     
-    # Convert to lowercase
     text = text.lower()
     
     # Split on whitespace and punctuation, keeping alphanumeric sequences
-    # This pattern matches words (alphanumeric sequences) and splits on punctuation
     tokens = re.findall(r'\b[a-z0-9]+\b', text)
     
-    # Filter out very short tokens (less than 2 characters) and numbers only
+    # Filter out very short tokens and numbers 
     tokens = [token for token in tokens if len(token) >= 2 and not token.isdigit()]
     
     return tokens
@@ -75,21 +73,16 @@ def tokenize_documents(jsonl_path: str) -> List[List[str]]:
     for doc in load_documents(jsonl_path):
         plain_text = doc.get("plain_text", "")
         
-        # Skip if empty
         if not plain_text or not plain_text.strip():
             continue
         
-        # Clean the text
         cleaned_text = clean_text(plain_text)
         
-        # Skip if cleaning resulted in empty text
         if not cleaned_text:
             continue
         
-        # Tokenize
         tokens = tokenize_text(cleaned_text)
         
-        # Only add documents with at least some tokens
         if len(tokens) > 0:
             tokenized_docs.append(tokens)
     
