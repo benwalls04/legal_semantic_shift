@@ -70,6 +70,8 @@ python run_pipeline.py <before_decade> <after_decade> <model_type> <model_size>
 
 ### Reproduce Results
 
+- To reproduce the results described in the report, run the following command 
+
 ```bash
 python run_pipeline.py 2000 2010 svd small
 ```
